@@ -1,0 +1,42 @@
+USE [zajel]
+GO
+/****** Object:  UserDefinedFunction [dbo].[fn_trs_calculate_fare]    Script Date: 12/26/2025 6:49:16 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER FUNCTION [dbo].[fn_trs_calculate_fare]
+    (@money     int,@cur_id int)
+RETURNS INT
+AS
+begin
+    declare @fare                float,
+            @far_start_range    int,
+            @far_end_range      int,
+            @far_amount         FLOAT,
+            @far_kind           int
+
+    
+    SET @fare = 0
+    
+    declare cur cursor for select FAR_START_RANGE,FAR_END_RANGE,FAR_AMOUNT,FAR_KIND FROM ZAJ_FARE_SETTING where cur_id=@cur_id
+    
+    OPEN cur
+    FETCH NEXT FROM cur INTO @far_start_range,@far_end_range,@far_amount,@FAR_KIND
+    WHILE @@FETCH_STATUS = 0  
+    BEGIN  
+        if @money >= @far_start_range and @money <= @far_end_range
+        if @FAR_KIND=0
+           SET @fare = @far_amount
+        else 
+           SET @fare = @far_amount * @money
+        FETCH NEXT FROM cur INTO @far_start_range,@far_end_range,@far_amount,@FAR_KIND
+    END  
+    
+    
+    CLOSE cur
+    DEALLOCATE cur
+
+    RETURN  CAST (@fare AS INT)
+    END

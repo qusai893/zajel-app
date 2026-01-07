@@ -1,0 +1,77 @@
+name: zajel
+description: "A new Flutter project."
+publish_to: 'none'
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Core & Auth
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  provider: ^6.0.5
+  flutter_dotenv: ^5.1.0
+  device_info_plus: ^11.0.0
+  local_auth: ^2.1.6
+
+  # Real-time & Connectivity
+  signalr_netcore: ^1.4.4
+  connectivity_plus: ^6.0.3
+
+  # UI & Media
+  mobile_scanner: ^5.1.1 
+  image_picker: ^1.0.4
+  flutter_spinkit: ^5.2.0
+  intl: ^0.19.0
+  google_fonts: ^6.1.0
+  cupertino_icons: ^1.0.8
+
+  # PDF & Files
+  pdf: ^3.10.11              
+  printing: ^5.11.2        
+  universal_html: ^2.2.3     
+  flutter_widget_from_html: ^0.16.0   
+  share_plus: ^7.0.2
+  path_provider: ^2.1.1
+  open_filex: ^4.3.2            
+
+  # System Info & Permissions
+  package_info_plus: ^8.0.0
+  permission_handler: ^10.4.3
+  flutter_localizations:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: "^0.13.1"
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - .env
+    - assets/fonts/           
+
+  fonts:
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri-Regular.ttf
+        - asset: assets/fonts/Amiri-Bold.ttf
+          weight: 700
+    - family: Lateef
+      fonts:
+        - asset: assets/fonts/Lateef-Regular.ttf
+        - asset: assets/fonts/Lateef-Bold.ttf
+          weight: 700
