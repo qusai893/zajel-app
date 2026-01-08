@@ -18,7 +18,7 @@ class BiometricAuthService {
           canAuthenticateWithBiometrics || await _localAuth.isDeviceSupported();
 
       if (!canAuthenticate) {
-        print('❌ Biyometrik desteklenmiyor');
+        print('❌ Biometric Not Supported');
         return false;
       }
 
@@ -40,7 +40,7 @@ class BiometricAuthService {
         ),
       );
     } on PlatformException catch (e) {
-      print('❌ Platform Hatası [${e.code}]: ${e.message}');
+      print('❌ Platform Error [${e.code}]: ${e.message}');
       return false;
     } finally {
       _isProcessing = false;

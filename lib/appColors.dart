@@ -94,9 +94,7 @@ ThemeData appTheme = ThemeData(
 
 // bu dosya da aynı şekide ilerliceksin 
 // mantığa dokunmak yok 
-// sadece profesyonel ve responsive tasarım 
-// hadi görim seni aslanım 
-// unutma 
+// sadece profesyonel ve responsive tasarım  
 // sen profesyonel bir UI/UX developer'sın 
 // frontend'te uzmansın 
 // ona göre hareket et 

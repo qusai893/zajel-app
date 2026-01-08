@@ -279,7 +279,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
       ],
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
-          'سجل الحوالات',
+          'الحوالات المرسلة والمستلمة',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,

@@ -93,7 +93,7 @@ class _QrLoginScreenState extends State<QrLoginScreen>
         );
       }
     } catch (e) {
-      debugPrint("Galeri tarama hatası: $e");
+      debugPrint("Galery Scaning Error: $e");
     }
   }
 
@@ -182,7 +182,7 @@ class _QrLoginScreenState extends State<QrLoginScreen>
       }
     } catch (e) {
       setState(() => isProcessing = false);
-      debugPrint("QR Login Hatası: $e");
+      debugPrint("QR Login Error: $e");
     }
   }
 

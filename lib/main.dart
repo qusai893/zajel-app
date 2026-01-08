@@ -180,7 +180,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             balance.balanceSyr.toDouble(), balance.balanceDollar.toDouble());
       }
     } catch (e) {
-      debugPrint("Bakiye hatası: $e");
+      debugPrint("Balance Error: $e");
     }
   }
 
@@ -204,7 +204,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         }
       });
     } catch (e) {
-      debugPrint("Transfer hatası: $e");
+      debugPrint("Transfer Error: $e");
     }
   }
 

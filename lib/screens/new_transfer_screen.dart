@@ -151,7 +151,7 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Veriler yüklenemedi: $e'),
+            content: Text('لم يتم تحميل البيانات ,تفقد اتصالك بالانترنت'),
             backgroundColor: Colors.red),
       );
     } finally {

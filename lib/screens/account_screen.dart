@@ -409,7 +409,8 @@ class _AccountScreenState extends State<AccountScreen> {
         ),
         _buildStatBox(
           title: 'نشاط', // Duration yerine placeholder activity
-          value: 'عالي',
+          value:
+              authProvider.totalSentTransfers.toInt() > 10 ? 'عالي' : 'منخفض',
           icon: Icons.analytics_outlined,
           color: Colors.orange,
         ),

@@ -67,7 +67,7 @@ class DeviceAuthService {
       final responseData = jsonDecode(response.body);
       return DeviceAuthResponse.fromJson(responseData);
     } catch (e) {
-      print("QR Login API Hatası: $e");
+      print("QR Login API Error: $e");
       return DeviceAuthResponse(
         success: false,
         isDeviceRegistered: false,

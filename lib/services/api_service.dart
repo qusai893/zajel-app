@@ -12,8 +12,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class ApiService {
   static String baseUrl = dotenv.env['BASE_URL'] ?? "";
 
-  // --- MERKEZİ HATA YÖNETİMİ ---
-  // Bu metod tüm teknik hataları kullanıcı dostu Arapça mesajlara çevirir.
   static String _handleError(dynamic e) {
     if (e is SocketException || e is http.ClientException) {
       return "لا يوجد اتصال بالإنترنت، يرجى التحقق من الشبكة"; // İnternet bağlantısı yok
@@ -66,7 +64,7 @@ class ApiService {
       return null;
     } catch (e) {
       debugPrint('❌ Error in getCustomerBalance: $e');
-      return null; // Sessiz hata (Dashboard'da loading durur ama uygulama çökmez)
+      return null;
     }
   }
 
@@ -294,27 +292,27 @@ class ApiService {
     debugPrint('✅ Logout: Cache cleared');
   }
 
-  static Future<Map<String, dynamic>> qrLogin(
-      String androidId, String qrSerial) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/qr-login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'androidId': androidId, 'qrCodeValue': qrSerial}),
-          )
-          .timeout(const Duration(seconds: 15));
+  // static Future<Map<String, dynamic>> qrLogin(
+  //     String androidId, String qrSerial) async {
+  //   try {
+  //     final response = await http
+  //         .post(
+  //           Uri.parse('$baseUrl/qr-login'),
+  //           headers: {'Content-Type': 'application/json'},
+  //           body: jsonEncode({'androidId': androidId, 'qrCodeValue': qrSerial}),
+  //         )
+  //         .timeout(const Duration(seconds: 15));
 
-      // EĞER BODY BOŞSA HATAYI YAKALA
-      if (response.body.isEmpty) {
-        return {"success": false, "message": "Sunucudan boş yanıt döndü."};
-      }
+  //     // EĞER BODY BOŞSA HATAYI YAKALA
+  //     if (response.body.isEmpty) {
+  //       return {"success": false, "message": "Sunucudan boş yanıt döndü."};
+  //     }
 
-      return jsonDecode(response.body);
-    } catch (e) {
-      return {"success": false, "message": _handleError(e)};
-    }
-  }
+  //     return jsonDecode(response.body);
+  //   } catch (e) {
+  //     return {"success": false, "message": _handleError(e)};
+  //   }
+  // }
 
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();

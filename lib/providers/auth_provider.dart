@@ -18,11 +18,13 @@ class AuthProvider with ChangeNotifier {
   bool _isAuthenticated = false;
   String _errorMessage = '';
   final transferSent = TransferType.sent;
+  int _totalSentTransfers = 0;
 
   // Getters
   Customer? get currentCustomer => _currentCustomer;
   String? get token => _token;
   int get totalTransfers => _totalTransfers;
+  int get totalSentTransfers => _totalSentTransfers;
   int get totalContacts => _totalContacts;
   DateTime? get accountCreationDate => _accountCreationDate;
   List<TransferModel> get recentTransfers => _recentTransfers;
@@ -78,7 +80,7 @@ class AuthProvider with ChangeNotifier {
       _saveCustomerToStorage();
       notifyListeners();
     } catch (e) {
-      print("❌ AuthProvider setCustomer Hatası: $e");
+      print("❌ AuthProvider setCustomer Error: $e");
     }
   }
 
@@ -112,30 +114,30 @@ class AuthProvider with ChangeNotifier {
     print('   💴 Syrian: $syr SYP');
   }
 
-  // QR ile Giriş
-  Future<bool> loginWithQr(String androidId, String qrSerial) async {
-    _isLoading = true;
-    notifyListeners();
+  // // QR ile Giriş
+  // Future<bool> loginWithQr(String androidId, String qrSerial) async {
+  //   _isLoading = true;
+  //   notifyListeners();
 
-    try {
-      final data = await ApiService.qrLogin(androidId, qrSerial);
-      final response = DeviceAuthResponse.fromJson(data);
+  //   try {
+  //     final data = await ApiService.qrLogin(androidId, qrSerial);
+  //     final response = DeviceAuthResponse.fromJson(data);
 
-      if (response.success) {
-        await _handleSuccessfulLogin(response);
-        return true;
-      } else {
-        _errorMessage = response.message;
-        return false;
-      }
-    } catch (e) {
-      _errorMessage = "خطأ في الاتصال";
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
+  //     if (response.success) {
+  //       await _handleSuccessfulLogin(response);
+  //       return true;
+  //     } else {
+  //       _errorMessage = response.message;
+  //       return false;
+  //     }
+  //   } catch (e) {
+  //     _errorMessage = "خطأ في الاتصال";
+  //     return false;
+  //   } finally {
+  //     _isLoading = false;
+  //     notifyListeners();
+  //   }
+  // }
 
   // Load customer data from SharedPreferences
   Future<void> _loadCustomerFromStorage() async {
@@ -258,7 +260,7 @@ class AuthProvider with ChangeNotifier {
 
       final receivedTransfers = await ApiService.getReceivedTransfers();
       final receivedList = (receivedTransfers['transfers'] as List?) ?? [];
-
+      _totalSentTransfers = sentList.length;
       _totalTransfers = sentList.length + receivedList.length;
 
       if (sentList.isNotEmpty) {

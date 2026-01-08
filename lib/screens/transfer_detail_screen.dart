@@ -405,23 +405,6 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
   Widget _buildActionButtons() {
     return Column(
       children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _exportPdf,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primaryGold,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              elevation: 4,
-            ),
-            icon: const Icon(Icons.picture_as_pdf),
-            label: const Text('حفظ كملف PDF',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        ),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,

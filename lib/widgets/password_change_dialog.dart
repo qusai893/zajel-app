@@ -69,19 +69,16 @@ class _PasswordChangeDialogState extends State<PasswordChangeDialog> {
           ),
         );
 
-        // Dialog'u hemen kapat
         Navigator.pop(context);
 
-        // HEMEN login ekranına yönlendir (çok önemli!)
         await Future.delayed(const Duration(milliseconds: 100));
 
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false, // Tüm sayfaları temizle
+          (route) => false,
         );
       } else {
-        // Hata mesajını göster
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
