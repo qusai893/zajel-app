@@ -44,6 +44,58 @@ class ApiService {
     };
   }
 
+  static Future<Map<String, dynamic>> getTransferSettings() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/Transfer/settings'),
+      headers: await _getHeaders(),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load settings');
+  }
+
+  static Future<String> generateNotificationNumber() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/transfer/generate-notification'),
+              headers: headers)
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200)
+        return json.decode(response.body)['notificationNumber'];
+      throw Exception("فشل في إنشاء رقم الإشعار");
+    } catch (e) {
+      throw Exception(_handleError(e));
+    }
+  }
+
+  static Future<Map<String, dynamic>> getDailyStats() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/Transfer/daily-stats'),
+            headers: await _getHeaders(),
+          )
+          .timeout(const Duration(seconds: 30)); // Zaman aşımı ekleyin
+
+      print("Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else if (response.statusCode == 401) {
+        throw Exception(
+            'Login session has been expired, Please login and try again');
+      } else {
+        throw Exception('Error Code: ${response.statusCode}');
+      }
+    } catch (e) {
+      print("API Error (getDailyStats): $e");
+      rethrow; // Hatayı yukarı fırlat ki UI'da görebilelim
+    }
+  }
+
   // ⭐ Bakiye çekme fonksiyonu
   static Future<CustomerBalance?> getCustomerBalance(int userId) async {
     try {
@@ -246,20 +298,6 @@ class ApiService {
   }
 
   // ⭐ Bildirim numarası oluştur
-  static Future<String> generateNotificationNumber() async {
-    try {
-      final headers = await _getHeaders();
-      final response = await http
-          .get(Uri.parse('$baseUrl/transfer/generate-notification'),
-              headers: headers)
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200)
-        return json.decode(response.body)['notificationNumber'];
-      throw Exception("فشل في إنشاء رقم الإشعار");
-    } catch (e) {
-      throw Exception(_handleError(e));
-    }
-  }
 
   // ⭐ Alıcı kontrolü
   static Future<bool> checkReceiverExists(

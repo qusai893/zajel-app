@@ -27,87 +27,87 @@ class _PasswordChangeDialogState extends State<PasswordChangeDialog> {
     super.dispose();
   }
 
-  Future<void> _changePassword() async {
-    if (!_formKey.currentState!.validate()) return;
+  // Future<void> _changePassword() async {
+  //   if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+  //   setState(() => _isLoading = true);
 
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+  //   try {
+  //     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      final success = await authProvider.changePassword(
-        oldPassword: _currentPasswordController.text,
-        newPassword: _newPasswordController.text,
-      );
+  //     final success = await authProvider.changePassword(
+  //       oldPassword: _currentPasswordController.text,
+  //       newPassword: _newPasswordController.text,
+  //     );
 
-      if (!mounted) return;
+  //     if (!mounted) return;
 
-      if (success) {
-        // Başarılı mesajı göster
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 10),
-                Column(
-                  children: [
-                    const Text('تم تغيير كلمة المرور بنجاح',
-                        style: TextStyle(fontFamily: 'Cairo')),
-                    SizedBox(
-                      height: 5,
-                    ),
-                    const Text('اعد تسجيل الدخول بكلمة المرور الجديدة',
-                        style: TextStyle(fontFamily: 'Cairo')),
-                  ],
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+  //     if (success) {
+  //       // Başarılı mesajı göster
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Row(
+  //             children: [
+  //               const Icon(Icons.check_circle, color: Colors.white),
+  //               const SizedBox(width: 10),
+  //               Column(
+  //                 children: [
+  //                   const Text('تم تغيير كلمة المرور بنجاح',
+  //                       style: TextStyle(fontFamily: 'Cairo')),
+  //                   SizedBox(
+  //                     height: 5,
+  //                   ),
+  //                   const Text('اعد تسجيل الدخول بكلمة المرور الجديدة',
+  //                       style: TextStyle(fontFamily: 'Cairo')),
+  //                 ],
+  //               ),
+  //             ],
+  //           ),
+  //           backgroundColor: Colors.green,
+  //           behavior: SnackBarBehavior.floating,
+  //           duration: const Duration(seconds: 4),
+  //         ),
+  //       );
 
-        Navigator.pop(context);
+  //       Navigator.pop(context);
 
-        await Future.delayed(const Duration(milliseconds: 100));
+  //       await Future.delayed(const Duration(milliseconds: 100));
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              authProvider.errorMessage,
-              style: const TextStyle(fontFamily: 'Cairo'),
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
+  //       Navigator.pushAndRemoveUntil(
+  //         context,
+  //         MaterialPageRoute(builder: (context) => const LoginScreen()),
+  //         (route) => false,
+  //       );
+  //     } else {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text(
+  //             authProvider.errorMessage,
+  //             style: const TextStyle(fontFamily: 'Cairo'),
+  //           ),
+  //           backgroundColor: Colors.red,
+  //           behavior: SnackBarBehavior.floating,
+  //           duration: const Duration(seconds: 5),
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'حدث خطأ غير متوقع: $e',
-            style: const TextStyle(fontFamily: 'Cairo'),
-          ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(
+  //           'حدث خطأ غير متوقع: $e',
+  //           style: const TextStyle(fontFamily: 'Cairo'),
+  //         ),
+  //         backgroundColor: Colors.red,
+  //         behavior: SnackBarBehavior.floating,
+  //       ),
+  //     );
+  //   } finally {
+  //     if (mounted) setState(() => _isLoading = false);
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -373,7 +373,7 @@ class _PasswordChangeDialogState extends State<PasswordChangeDialog> {
         Expanded(
           flex: 2,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _changePassword,
+            onPressed: _isLoading ? null : () => {},
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,

@@ -19,9 +19,8 @@ class _TransfersScreenState extends State<TransfersScreen> {
   // --- MANTIK DEĞİŞKENLERİ ---
   List<TransferModel> _allTransfers = [];
   List<TransferModel> _displayedTransfers = []; // Ekrana basılan liste
-
-  // İstatistikler için filtrelenmiş ama kategorize edilmemiş liste
-  List<TransferModel> _statsBaseList = [];
+  List<TransferModel> _statsBaseList =
+      []; // İstatistikler için liste (Artık displayed ile aynı çalışacak)
 
   TransferType _currentFilter = TransferType.all;
   String _selectedCurrency = 'ALL'; // 'ALL', 'USD', 'SYP'
@@ -31,7 +30,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
   String _errorMessage = '';
   String _searchQuery = '';
 
-  // DEĞİŞİKLİK 1: Tek tarih yerine Tarih Aralığı
+  // Tarih Aralığı
   DateTimeRange? _selectedDateRange;
 
   @override
@@ -81,14 +80,13 @@ class _TransfersScreenState extends State<TransfersScreen> {
     }
   }
 
-  // --- GELİŞMİŞ FİLTRELEME MANTIĞI ---
+  // --- KRİTİK DÜZENLEME BURADA YAPILDI ---
   void _updateFilteredTransfers() {
     List<TransferModel> tempList = _allTransfers;
 
-    // DEĞİŞİKLİK 2: Tarih Aralığı Filtresi
+    // 1. Tarih Aralığı Filtresi
     if (_selectedDateRange != null) {
       tempList = tempList.where((transfer) {
-        // Transfer tarihinin saatini sıfırlayarak sadece gün karşılaştırması yapıyoruz
         final transferDate = DateTime(
             transfer.date.year, transfer.date.month, transfer.date.day);
 
@@ -98,7 +96,6 @@ class _TransfersScreenState extends State<TransfersScreen> {
         final endDate = DateTime(_selectedDateRange!.end.year,
             _selectedDateRange!.end.month, _selectedDateRange!.end.day);
 
-        // Tarih, başlangıçtan büyük/eşit VE bitişten küçük/eşit olmalı
         return (transferDate.isAtSameMomentAs(startDate) ||
                 transferDate.isAfter(startDate)) &&
             (transferDate.isAtSameMomentAs(endDate) ||
@@ -106,7 +103,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
       }).toList();
     }
 
-    // Arama Filtresi
+    // 2. Arama Filtresi
     if (_searchQuery.isNotEmpty) {
       tempList = tempList.where((transfer) {
         return transfer.transferNumber
@@ -119,45 +116,43 @@ class _TransfersScreenState extends State<TransfersScreen> {
       }).toList();
     }
 
-    // İstatistik listesini güncelle
-    setState(() {
-      _statsBaseList = tempList;
-    });
-
-    // Tip Filtresi
+    // 3. Tip Filtresi (Sent/Received) - ARTIK STATS GÜNCELLENMEDEN ÖNCE YAPILIYOR
     if (_currentFilter != TransferType.all) {
       tempList = tempList
           .where((transfer) => transfer.type == _currentFilter)
           .toList();
     }
 
-    // Para Birimi Filtresi
+    // 4. Para Birimi Filtresi (USD/SYP) - ARTIK STATS GÜNCELLENMEDEN ÖNCE YAPILIYOR
     if (_selectedCurrency != 'ALL') {
       tempList = tempList
           .where((transfer) => transfer.currency == _selectedCurrency)
           .toList();
     }
 
+    // SONUÇ: Hem ekrandaki liste hem de istatistik listesi filtrelenmiş veriyi alır
     setState(() {
       _displayedTransfers = tempList;
+      _statsBaseList =
+          tempList; // İstatistikler de artık filtrelenmiş veriden besleniyor
     });
   }
 
   void _applyTypeFilter(TransferType filterType) {
     setState(() {
       _currentFilter = filterType;
-      _updateFilteredTransfers();
+      // setState içinde çağırmaya gerek yok ama mantık akışı için dışarıda olması daha temiz
     });
+    _updateFilteredTransfers();
   }
 
   void _applyCurrencyFilter(String currency) {
     setState(() {
       _selectedCurrency = currency;
-      _updateFilteredTransfers();
     });
+    _updateFilteredTransfers();
   }
 
-  // DEĞİŞİKLİK 3: Tarih Aralığı Seçici Fonksiyonu
   Future<void> _selectDateRange(BuildContext context) async {
     final DateTime now = DateTime.now();
 
@@ -166,8 +161,8 @@ class _TransfersScreenState extends State<TransfersScreen> {
       firstDate: DateTime(2020),
       lastDate: now,
       initialDateRange: _selectedDateRange,
-      saveText: 'تأكيد', // Kaydet butonu Arapça
-      helpText: 'اختر الفترة الزمنية', // Başlık Arapça
+      saveText: 'تأكيد',
+      helpText: 'اختر الفترة الزمنية',
       builder: (context, child) {
         return Theme(
           data: ThemeData.light().copyWith(
@@ -187,8 +182,8 @@ class _TransfersScreenState extends State<TransfersScreen> {
     if (picked != null && picked != _selectedDateRange) {
       setState(() {
         _selectedDateRange = picked;
-        _updateFilteredTransfers();
       });
+      _updateFilteredTransfers();
     }
   }
 
@@ -196,7 +191,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
     setState(() {
       _currentFilter = TransferType.all;
       _selectedCurrency = 'ALL';
-      _selectedDateRange = null; // Aralığı temizle
+      _selectedDateRange = null;
       _searchQuery = '';
       _statsBaseList = _allTransfers;
       _displayedTransfers = _allTransfers;
@@ -361,7 +356,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
                   ],
                 ),
                 child: IconButton(
-                  icon: Icon(Icons.date_range_rounded, // İkon değişti
+                  icon: Icon(Icons.date_range_rounded,
                       color: _selectedDateRange != null
                           ? Colors.white
                           : AppColors.primary),
@@ -374,7 +369,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
 
           SizedBox(height: 16),
 
-          // DEĞİŞİKLİK 4: Seçili Tarih Aralığı Göstergesi
+          // Seçili Tarih Aralığı Göstergesi
           if (_selectedDateRange != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12.0),
@@ -382,8 +377,8 @@ class _TransfersScreenState extends State<TransfersScreen> {
                 onTap: () {
                   setState(() {
                     _selectedDateRange = null; // Sadece tarihi temizle
-                    _updateFilteredTransfers();
                   });
+                  _updateFilteredTransfers();
                 },
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -399,11 +394,9 @@ class _TransfersScreenState extends State<TransfersScreen> {
                       Icon(Icons.calendar_today_rounded,
                           size: 14, color: AppColors.primary),
                       SizedBox(width: 8),
-                      // Başlangıç - Bitiş Tarihi Gösterimi
                       Text(
                         '${DateFormat('yyyy/MM/dd').format(_selectedDateRange!.start)} - ${DateFormat('yyyy/MM/dd').format(_selectedDateRange!.end)}',
-                        textDirection: ui.TextDirection
-                            .ltr, // Tarih soldan sağa düzgün görünsün
+                        textDirection: ui.TextDirection.ltr,
                         style: TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold,
@@ -502,7 +495,12 @@ class _TransfersScreenState extends State<TransfersScreen> {
   }
 
   Widget _buildStatsSummary() {
-    if (_statsBaseList.isEmpty) return SizedBox.shrink();
+    // Liste boşsa gizle
+    if (_statsBaseList.isEmpty &&
+        _searchQuery.isEmpty &&
+        _currentFilter == TransferType.all &&
+        _selectedCurrency == 'ALL' &&
+        _selectedDateRange == null) return SizedBox.shrink();
 
     final sentCount =
         _statsBaseList.where((t) => t.type == TransferType.sent).length;

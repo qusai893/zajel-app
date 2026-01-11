@@ -407,13 +407,6 @@ class _AccountScreenState extends State<AccountScreen> {
           icon: Icons.people_outline_rounded,
           color: Colors.purple,
         ),
-        _buildStatBox(
-          title: 'نشاط', // Duration yerine placeholder activity
-          value:
-              authProvider.totalSentTransfers.toInt() > 10 ? 'عالي' : 'منخفض',
-          icon: Icons.analytics_outlined,
-          color: Colors.orange,
-        ),
       ],
     );
   }

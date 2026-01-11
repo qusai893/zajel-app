@@ -22,78 +22,80 @@ class TransferDetailScreen extends StatefulWidget {
 class _TransferDetailScreenState extends State<TransferDetailScreen> {
   final PdfExportService _pdfService = PdfExportService();
   bool _isExporting = false;
-  String _senderCity = '';
-  String _senderName = '';
-  String _senderFatherName = '';
-  String _senderLastName = '';
-  int _amount = 0;
   int _fee = 0;
-
-  // Yazı ile miktar için değişken
   String _amountInWords = '';
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // _calculateTransferFee();
-
-      _initializeData();
-    });
-  }
-
-  Future<void> _initializeData() async {
-    // Debug için Fee kontrolü (Konsola bakın)
-
-    final feeData = await ApiService.calculateFee(
-        widget.transfer.amount.toInt(), widget.transfer.currency);
-    setState(() {
-      _fee = feeData['fee'];
-      print(feeData);
-    });
-    print("Gelen Transfer Ücreti (Fee): ${_fee}");
-
-    double totalAmount = widget.transfer.amount + _fee;
-
-    // 2. Bu toplam tutarı yazıya çevir
-    String textAmount = ArabicNumberConverter.convert(totalAmount.toInt());
-    // Para birimine göre metni düzenle
-    String currencyName = widget.transfer.currency.contains("S.P") ||
-            widget.transfer.currency.contains("SYP")
-        ? "ليرة سورية"
-        : "دولار أمريكي";
-
-    if (!mounted) return;
-
-    setState(() {
-      _amountInWords = "فقط $textAmount $currencyName لا غير";
-    });
-
-    try {
-      final senderInfo = await ApiService.getSenderInfo();
-      if (mounted) {
-        setState(() {
-          _senderCity = senderInfo!['cityName'] ?? 'غير محدد';
-          _senderName = senderInfo?['cuS_NAME'] ??
-              senderInfo?['cusName'] ??
-              senderInfo?['CUS_NAME'] ??
-              '';
-          _senderFatherName =
-              senderInfo['cusFatherName'] ?? 'Unknown Sender Father Name';
-          _senderLastName =
-              senderInfo['cusLastName'] ?? 'Unknown Sender Last Name';
-        });
-      }
-    } catch (e) {
-      print("Error fetching info: $e");
-    }
-  }
 
   final Color _primaryGold = const Color(0xFFC8A463);
   final Color _textDark = const Color(0xFF333333);
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
+  }
+
+  Future<void> _initializeData() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+
+    // 1. Ücreti Hesapla
+    try {
+      final feeData = await ApiService.calculateFee(
+          widget.transfer.amount.toInt(), widget.transfer.currency);
+      if (mounted) {
+        setState(() {
+          _fee = feeData['fee'] ?? 0;
+          _calculateTafqeet();
+        });
+      }
+    } catch (e) {
+      print("Fee error: $e");
+    }
+
+    // 2. GÖNDERİCİ BİLGİSİ (HIZLANDIRILMIŞ ÇALIŞMA)
+    // Eğer AuthProvider içinde bilgi varsa tekrar API'ye sormuyoruz, anında ekrana geliyor.
+    if (auth.senderInfo == null) {
+      try {
+        final info = await ApiService.getSenderInfo();
+        if (info != null && mounted) {
+          auth.setSenderInfo(info); // Provider'a set et (Cachele)
+        }
+      } catch (e) {
+        print("Sender info fetch error: $e");
+      }
+    }
+  }
+
+  void _calculateTafqeet() {
+    double totalAmount = widget.transfer.amount + _fee;
+    String textAmount = ArabicNumberConverter.convert(totalAmount.toInt());
+    String currencyName = widget.transfer.currency.contains("S.P") ||
+            widget.transfer.currency.contains("SYP")
+        ? "ليرة سورية"
+        : "دولار أمريكي";
+    if (mounted) {
+      setState(() {
+        _amountInWords = "فقط $textAmount $currencyName لا غير";
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Provider'ı dinle (Bilgi geldiği an UI güncellenir)
+    final auth = Provider.of<AuthProvider>(context);
+    final senderInfo = auth.senderInfo;
+
+    // Gönderici ve Alıcı İsim Mantığı (Cache'den gelen bilgilerle)
+    String displaySender = widget.transfer.isIncoming
+        ? widget.transfer.name
+        : "${senderInfo?['cuS_NAME'] ?? ''} ${senderInfo?['cusFatherName'] ?? ''} ${senderInfo?['cusLastName'] ?? ''}";
+
+    String displayReceiver = widget.transfer.isIncoming
+        ? (senderInfo?['cuS_NAME'] ?? '')
+        : widget.transfer.name;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF0F0F0),
       appBar: AppBar(
@@ -104,13 +106,6 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
         backgroundColor: _primaryGold,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _sharePdf,
-            tooltip: 'مشاركة',
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -119,7 +114,8 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               child: Column(
                 children: [
-                  _buildReceiptCard(),
+                  _buildReceiptCard(displaySender, displayReceiver,
+                      senderInfo?['cityName'] ?? '---'),
                   const SizedBox(height: 30),
                   _buildActionButtons(),
                   const SizedBox(height: 20),
@@ -127,32 +123,13 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
               ),
             ),
           ),
-          if (_isExporting)
-            Container(
-              color: Colors.black54,
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 16),
-                    Text(
-                      'جاري المعالجة...',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          if (_isExporting) _buildLoadingOverlay(),
         ],
       ),
     );
   }
 
-  Widget _buildReceiptCard() {
-    String textFee = "${_fee.toStringAsFixed(0)} ${widget.transfer.currency}";
-
+  Widget _buildReceiptCard(String sender, String receiver, String senderCity) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 500),
       decoration: BoxDecoration(
@@ -165,39 +142,16 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 15,
+              offset: const Offset(0, 5)),
         ],
       ),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 50,
-              decoration: BoxDecoration(
-                color: _primaryGold,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(80),
-                  bottomLeft: Radius.circular(80),
-                ),
-              ),
-              child: Center(
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: const Text(
-                    "شركة الزاجل للحوالات المالية المحدودة المسؤولية - سجل تجاري",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            _buildSideBanner(),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 24, 24),
@@ -205,7 +159,7 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildHeaderLogo(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 15),
                     _buildLabelAndField(
                         "رقم الإشعار", widget.transfer.transferNumber),
                     const SizedBox(height: 8),
@@ -216,44 +170,33 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildCapsuleField("من", _senderCity)),
+                        Expanded(child: _buildCapsuleField("من", senderCity)),
+                        const SizedBox(width: 8),
                         Expanded(
                             child: _buildCapsuleField(
                                 "إلى", widget.transfer.city)),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _buildPersonRow(
-                      "المرسل",
-                      widget.transfer.isIncoming
-                          ? widget.transfer.name
-                          : _senderName +
-                              ' ' +
-                              _senderFatherName +
-                              ' ' +
-                              _senderLastName,
-                    ),
+                    _buildLabelAndField("المرسل", sender),
                     const SizedBox(height: 8),
-                    _buildPersonRow(
-                      "المستفيد",
-                      widget.transfer.isIncoming
-                          ? _senderName
-                          : widget.transfer.name,
-                    ),
+                    _buildLabelAndField("المستفيد", receiver),
                     const SizedBox(height: 12),
+
+                    // TELEFONLAR YAN YANA VE LTR (KARIŞMAZ)
                     Row(
                       children: [
                         Expanded(
-                            child: _buildCapsuleField("هاتف",
-                                widget.transfer.displayPhone.toString())),
-                        const SizedBox(width: 10),
+                            child: _buildPhoneField(
+                                "هاتف", widget.transfer.displayPhone)),
+                        const SizedBox(width: 8),
                         Expanded(
-                            child: _buildCapsuleField("موبايل",
-                                widget.transfer.displayMobile.toString())),
+                            child: _buildPhoneField(
+                                "موبايل", widget.transfer.displayMobile)),
                       ],
                     ),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(height: 15),
                     const Divider(color: Color(0xFFC8A463), thickness: 1),
                     const SizedBox(height: 10),
                     Row(
@@ -262,37 +205,20 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
                             child: _buildLabelAndField("المبلغ",
                                 "${widget.transfer.amount.toStringAsFixed(0)} ${widget.transfer.currency}",
                                 isBold: true)),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Expanded(
-                            child: _buildLabelAndField("الأجور", textFee,
+                            child: _buildLabelAndField("الأجور",
+                                "${_fee.toStringAsFixed(0)} ${widget.transfer.currency}",
                                 isSmall: true)),
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    // Yazı ile Miktar (Tafqeet Algoritması kullanılarak)
                     _buildLabelAndField("المبلغ كتابة", _amountInWords),
-
                     const SizedBox(height: 10),
                     _buildLabelAndField(
                         "سبب الحوالة", widget.transfer.transferReason),
                     const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _primaryGold.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        "ملاحظة: يعتبر المرسل والمستفيد هو المسؤول عن سبب الحوالة مقابل جميع الجهات العامة",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: _textDark,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                    _buildLegalNote(),
                   ],
                 ),
               ),
@@ -303,13 +229,66 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
     );
   }
 
-  // --- Widgets (Aynı kaldı) ---
+  // Telefonlar için özel LTR Widget
+  Widget _buildPhoneField(String label, dynamic value) {
+    String phoneText =
+        (value == null || value.toString() == "0" || value.toString().isEmpty)
+            ? "---"
+            : value.toString();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _primaryGold)),
+        const SizedBox(height: 2),
+        Container(
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _primaryGold.withOpacity(0.3)),
+          ),
+          child: Directionality(
+            textDirection: ui.TextDirection.ltr, // Rakamların yerini korur
+            child: Text(phoneText,
+                style: TextStyle(
+                    color: _textDark,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSideBanner() {
+    return Container(
+      width: 45,
+      decoration: BoxDecoration(
+        color: _primaryGold,
+        borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(80), bottomLeft: Radius.circular(80)),
+      ),
+      child: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: const Text(
+            "شركة الزاجل للحوالات المالية المحدودة المسؤولية",
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeaderLogo() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      height: 150,
-      child: Image.asset('assets/images/zajelLogo.png', fit: BoxFit.contain),
-    );
+        height: 90,
+        child: Image.asset('assets/images/zajelLogo.png', fit: BoxFit.contain));
   }
 
   Widget _buildLabelAndField(String label, String value,
@@ -317,35 +296,27 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 12, bottom: 2),
-          child: Text(
-            label,
-            textDirection: ui.TextDirection.rtl,
+        Text(label,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: _primaryGold,
-            ),
-          ),
-        ),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _primaryGold)),
         Container(
           width: double.infinity,
           padding:
-              EdgeInsets.symmetric(horizontal: 16, vertical: isSmall ? 8 : 10),
+              EdgeInsets.symmetric(horizontal: 16, vertical: isSmall ? 6 : 9),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: _primaryGold.withOpacity(0.5), width: 1),
+            border: Border.all(color: _primaryGold.withOpacity(0.4)),
           ),
           child: Text(
             value,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: isBold ? 16 : 14,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-              color: _textDark,
-            ),
+                fontSize: isBold ? 15 : 13,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+                color: _textDark),
           ),
         ),
       ],
@@ -354,99 +325,91 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
 
   Widget _buildCapsuleField(String label, String value) {
     return Container(
-      height: 40,
+      height: 38,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _primaryGold.withOpacity(0.5)),
-      ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _primaryGold.withOpacity(0.4))),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _textDark, fontWeight: FontWeight.bold),
-            ),
-          ),
+              child: Text(value,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: _textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12))),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             height: double.infinity,
             decoration: BoxDecoration(
-              color: _primaryGold.withOpacity(0.2),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                bottomLeft: Radius.circular(20),
-              ),
-            ),
+                color: _primaryGold.withOpacity(0.15),
+                borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    bottomLeft: Radius.circular(20))),
             child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: _primaryGold,
-                ),
-              ),
-            ),
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _primaryGold))),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPersonRow(String label, String name) {
-    return Row(
-      children: [
-        Expanded(flex: 3, child: _buildLabelAndField(label, name)),
-      ],
+  Widget _buildLegalNote() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+          color: _primaryGold.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8)),
+      child: Text(
+        "ملاحظة: يعتبر المرسل والمستفيد هو المسؤول عن سبب الحوالة مقابل جميع الجهات العامة",
+        textAlign: TextAlign.center,
+        style: TextStyle(
+            fontSize: 9, color: _textDark, fontWeight: FontWeight.bold),
+      ),
     );
   }
 
   Widget _buildActionButtons() {
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _sharePdf,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _primaryGold,
-              side: BorderSide(color: _primaryGold),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            icon: const Icon(Icons.share),
-            label: const Text('مشاركة الإيصال',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _sharePdf,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _primaryGold,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-      ],
+        icon: const Icon(Icons.share, color: Colors.white),
+        label: const Text('مشاركة الإيصال',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
+      ),
     );
   }
 
-  Future<void> _exportPdf() async {
-    if (_isExporting) return;
-    setState(() => _isExporting = true);
-    try {
-      await _pdfService.createTransferPdf(widget.transfer);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('✅ تم حفظ الملف بنجاح'),
-              backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
+  Widget _buildLoadingOverlay() {
+    return Container(
+      color: Colors.black54,
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text('جاري المعالجة...',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _sharePdf() async {
@@ -454,25 +417,19 @@ class _TransferDetailScreenState extends State<TransferDetailScreen> {
     setState(() => _isExporting = true);
     try {
       final file = await _pdfService.createTransferPdf(widget.transfer);
-      if (mounted) {
-        await Share.shareXFiles([XFile(file.path)],
-            text: 'إيصال تحويل - ${widget.transfer.transferNumber}');
-      }
+      await Share.shareXFiles([XFile(file.path)],
+          text: 'إيصال تحويل - ${widget.transfer.transferNumber}');
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
-        );
-      }
+            SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
   }
 }
 
-// -----------------------------------------------------------------------------
-// --- GELİŞMİŞ ARAPÇA SAYI ÇEVİRİCİ (TAFQEET) ---
-// -----------------------------------------------------------------------------
+// --- ARABIC NUMBER CONVERTER (Aynı kaldı) ---
 class ArabicNumberConverter {
   static final List<String> _ones = [
     "",
@@ -486,11 +443,10 @@ class ArabicNumberConverter {
     "ثمانية",
     "تسعة"
   ];
-
   static final List<String> _teens = [
     "عشرة",
     "أحد عشر",
-    "اثنا عشر",
+    "اثna عشر",
     "ثلاثة عشر",
     "أربعة عشر",
     "خمسة عشر",
@@ -499,7 +455,6 @@ class ArabicNumberConverter {
     "ثمانية عشر",
     "تسعة عشر"
   ];
-
   static final List<String> _tens = [
     "",
     "عشرة",
@@ -512,11 +467,10 @@ class ArabicNumberConverter {
     "ثمانون",
     "تسعون"
   ];
-
   static final List<String> _hundreds = [
     "",
-    "مائة",
-    "مائتان",
+    "مئة",
+    "مئتان",
     "ثلاثمائة",
     "أربعمائة",
     "خمسمائة",
@@ -528,82 +482,52 @@ class ArabicNumberConverter {
 
   static String convert(int number) {
     if (number == 0) return "صفر";
-
     String fullText = "";
-
-    // Milyarlar (Billions)
     if (number >= 1000000000) {
       int billions = number ~/ 1000000000;
-      fullText += _processUnit(billions, "مليار", "ملياران", "مليارات");
+      fullText += _processUnit(billions, "مليار", "مليارan", "مليارات");
       number %= 1000000000;
       if (number > 0) fullText += " و ";
     }
-
-    // Milyonlar (Millions)
     if (number >= 1000000) {
       int millions = number ~/ 1000000;
-      fullText += _processUnit(millions, "مليون", "مليونان", "ملايين");
+      fullText += _processUnit(millions, "مليون", "مليونan", "ملايين");
       number %= 1000000;
       if (number > 0) fullText += " و ";
     }
-
-    // Binler (Thousands)
     if (number >= 1000) {
       int thousands = number ~/ 1000;
-      // Binler için özel durum: "elf" (1000) ve "elfan" (2000)
-      // 3-10 arası "alaf", 11+ "elf"
       fullText +=
-          _processUnit(thousands, "ألف", "ألفان", "آلاف", isThousand: true);
+          _processUnit(thousands, "ألف", "ألفين", "آلاف", isThousand: true);
       number %= 1000;
       if (number > 0) fullText += " و ";
     }
-
-    // Yüzler ve altı
-    if (number > 0) {
-      fullText += _convertThreeDigits(number);
-    }
-
+    if (number > 0) fullText += _convertThreeDigits(number);
     return fullText;
   }
 
-  // Birim işleme (Billion, Million, Thousand)
   static String _processUnit(
       int value, String singular, String dual, String plural,
       {bool isThousand = false}) {
     if (value == 1) return singular;
     if (value == 2) return dual;
-
     String prefix = _convertThreeDigits(value);
-
-    // Arapça dilbilgisi kuralları (Müfred, Müsenna, Cemi)
-    if (value >= 3 && value <= 10) {
-      return "$prefix $plural";
-    } else {
-      // 11'den büyük sayılar için genellikle tekil kullanılır (örn: 15 milyon)
-      // Ancak binler için "elf" kullanılır
-      String suffix = isThousand ? "ألف" : singular;
-      return "$prefix $suffix";
-    }
+    if (value >= 3 && value <= 10) return "$prefix $plural";
+    return "$prefix ${isThousand ? "ألف" : singular}";
   }
 
-  // 999'a kadar olan sayıları çevirir
   static String _convertThreeDigits(int number) {
     String text = "";
-
-    // Yüzler
     if (number >= 100) {
       text += _hundreds[number ~/ 100];
       number %= 100;
       if (number > 0) text += " و ";
     }
-
-    // Onlar ve Birler
     if (number >= 10 && number <= 19) {
       text += _teens[number - 10];
     } else if (number >= 20) {
       int onesDigit = number % 10;
       int tensDigit = number ~/ 10;
-
       if (onesDigit > 0) {
         text += _ones[onesDigit];
         text += " و ";
@@ -612,7 +536,6 @@ class ArabicNumberConverter {
     } else if (number > 0) {
       text += _ones[number];
     }
-
     return text;
   }
 }

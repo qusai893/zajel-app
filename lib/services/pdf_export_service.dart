@@ -477,8 +477,8 @@ class ArabicNumberConverter {
 
   static final List<String> _hundreds = [
     "",
-    "مائة",
-    "مائتان",
+    "مئة",
+    "مئتان",
     "ثلاثمائة",
     "أربعمائة",
     "خمسمائة",

@@ -20,6 +20,26 @@ class AuthProvider with ChangeNotifier {
   final transferSent = TransferType.sent;
   int _totalSentTransfers = 0;
 
+  // --- KRİTİK: Gönderici Bilgileri Cache Mekanizması ---
+  Map<String, dynamic>? _senderInfo;
+  Map<String, dynamic>? get senderInfo => _senderInfo;
+
+  // Gönderici bilgisini set eder ve yerel hafızaya kaydeder (Hız için)
+  void setSenderInfo(Map<String, dynamic> info) {
+    _senderInfo = info;
+    _saveSenderInfoToStorage(info); // Hafızaya yaz
+    notifyListeners();
+  }
+
+  Future<void> _saveSenderInfoToStorage(Map<String, dynamic> info) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_sender_info', json.encode(info));
+    } catch (e) {
+      print("❌ Sender Info Cache Error: $e");
+    }
+  }
+
   // Getters
   Customer? get currentCustomer => _currentCustomer;
   String? get token => _token;
@@ -38,12 +58,10 @@ class AuthProvider with ChangeNotifier {
   // Hesap süresi hesaplama
   String get accountDuration {
     if (_accountCreationDate == null) return 'جديد';
-
     final now = DateTime.now();
     final difference = now.difference(_accountCreationDate!);
     final years = difference.inDays ~/ 365;
     final months = (difference.inDays % 365) ~/ 30;
-
     if (years > 0) return '$years سنة';
     if (months > 0) return '$months شهر';
     return 'جديد';
@@ -62,7 +80,11 @@ class AuthProvider with ChangeNotifier {
   // Initialize provider
   Future<void> _initialize() async {
     await _loadCustomerFromStorage();
-    await _loadAccountStats();
+    if (_isAuthenticated) {
+      await _loadAccountStats();
+      // Arka planda bilgileri tazele
+      refreshUserInfo();
+    }
   }
 
   void setToken(String token) {
@@ -88,10 +110,9 @@ class AuthProvider with ChangeNotifier {
   void updateCustomerBalance(double syr, double dollar) {
     if (_currentCustomer == null) return;
 
-    // Veri değişmemişse güncelleme yapma
     if (_currentCustomer!.cusBalanceSyr == syr &&
         _currentCustomer!.cusBalanceDollar == dollar) {
-      print('ℹ️ Balance did not change,Update Skipped');
+      print('ℹ️ Balance did not change, Update Skipped');
       return;
     }
 
@@ -109,35 +130,8 @@ class AuthProvider with ChangeNotifier {
     _saveCustomerToStorage();
     notifyListeners();
 
-    print('✅ BAKİYE GÜNCELLENDİ:');
-    print('   💵 Dollar: $dollar USD');
-    print('   💴 Syrian: $syr SYP');
+    print('✅ BAKİYE GÜNCELLENDİ: Dollar: $dollar USD, Syrian: $syr SYP');
   }
-
-  // // QR ile Giriş
-  // Future<bool> loginWithQr(String androidId, String qrSerial) async {
-  //   _isLoading = true;
-  //   notifyListeners();
-
-  //   try {
-  //     final data = await ApiService.qrLogin(androidId, qrSerial);
-  //     final response = DeviceAuthResponse.fromJson(data);
-
-  //     if (response.success) {
-  //       await _handleSuccessfulLogin(response);
-  //       return true;
-  //     } else {
-  //       _errorMessage = response.message;
-  //       return false;
-  //     }
-  //   } catch (e) {
-  //     _errorMessage = "خطأ في الاتصال";
-  //     return false;
-  //   } finally {
-  //     _isLoading = false;
-  //     notifyListeners();
-  //   }
-  // }
 
   // Load customer data from SharedPreferences
   Future<void> _loadCustomerFromStorage() async {
@@ -145,23 +139,31 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('user');
       final token = prefs.getString('token');
+      final cachedSender = prefs.getString('cached_sender_info');
 
       if (userString == null || token == null) {
         _isAuthenticated = false;
         return;
       }
 
+      // Hız için: Daha önce kaydedilmiş gönderici bilgisini RAM'e al
+      if (cachedSender != null) {
+        _senderInfo = json.decode(cachedSender);
+      }
+
       final userData = json.decode(userString);
       _currentCustomer = Customer(
         cusId: userData['cusId'] ?? 0,
         cusName: userData['cusName'] ?? '',
-        cusLastName: userData['CusLastName'] ?? '',
-        regName: userData['cityName'],
+        // Key uyuşmazlığına karşı çift kontrol
+        cusLastName: userData['cusLastName'] ?? userData['CusLastName'] ?? '',
+        regName: userData['cityName'] ?? userData['regName'] ?? '',
         cusBalanceSyr: (userData['cusBalanceSyr'] ?? 0).toDouble(),
         cusBalanceDollar: (userData['cusBalanceDollar'] ?? 0).toDouble(),
         clientId: userData['clientId'] ?? '',
       );
 
+      _token = token;
       final firstLogin = prefs.getString('firstLoginDate');
       _accountCreationDate =
           firstLogin != null ? DateTime.parse(firstLogin) : DateTime.now();
@@ -172,11 +174,6 @@ class AuthProvider with ChangeNotifier {
       }
 
       _isAuthenticated = true;
-
-      print('📦 Storage\'dan yüklenen bakiye:');
-      print('   💵 ${_currentCustomer!.cusBalanceDollar} USD');
-      print('   💴 ${_currentCustomer!.cusBalanceSyr} SYP');
-
       notifyListeners();
     } catch (e) {
       print('❌ Storage load error: $e');
@@ -184,16 +181,15 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // ⭐ Save with timestamp
+  // Save with timestamp
   Future<void> _saveCustomerToStorage() async {
     if (_currentCustomer == null) return;
-
     try {
       final prefs = await SharedPreferences.getInstance();
       final userData = {
         'cusId': _currentCustomer!.cusId,
         'cusName': _currentCustomer!.cusName,
-        'CusLastName': _currentCustomer!.cusLastName,
+        'cusLastName': _currentCustomer!.cusLastName,
         'cusBalanceSyr': _currentCustomer!.cusBalanceSyr,
         'cusBalanceDollar': _currentCustomer!.cusBalanceDollar,
         'clientId': _currentCustomer!.clientId,
@@ -203,8 +199,6 @@ class AuthProvider with ChangeNotifier {
       await prefs.setString('user', json.encode(userData));
       await prefs.setString(
           'last_balance_update', DateTime.now().toIso8601String());
-
-      print('💾 Saved To Storage (${DateTime.now().toIso8601String()})');
     } catch (e) {
       print('❌ Storage save error: $e');
     }
@@ -214,7 +208,6 @@ class AuthProvider with ChangeNotifier {
   Future<bool> login(String username, String password) async {
     _setLoading(true);
     _clearError();
-
     try {
       final isConnected = await ApiService.testConnection();
       if (!isConnected) {
@@ -224,12 +217,15 @@ class AuthProvider with ChangeNotifier {
 
       final response = await ApiService.login(username, password);
       final customerData = response['customer'];
+      _token = response['token'];
 
       if (customerData != null) {
         _currentCustomer = Customer.fromJson(customerData);
         _isAuthenticated = true;
         _isSessionVerified = false;
         await _saveCustomerToStorage();
+        // Login sonrası gönderici bilgilerini çek ve cachele
+        await refreshUserInfo();
         await _loadAccountStats();
         return true;
       } else {
@@ -238,13 +234,7 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       String message = e.toString();
-      if (message.startsWith("Exception: ")) {
-        message = message.substring(11);
-      }
-      if (message.contains("ClientException") ||
-          message.contains("SocketException")) {
-        message = 'لا يوجد اتصال بالإنترنت';
-      }
+      if (message.startsWith("Exception: ")) message = message.substring(11);
       _setError(message);
       return false;
     } finally {
@@ -265,12 +255,7 @@ class AuthProvider with ChangeNotifier {
 
       if (sentList.isNotEmpty) {
         final uniqueReceivers = sentList
-            .map((t) {
-              if (t is Map) {
-                return t['receiverName']?.toString() ?? '';
-              }
-              return '';
-            })
+            .map((t) => t is Map ? (t['receiverName']?.toString() ?? '') : '')
             .where((name) => name.isNotEmpty)
             .toSet();
         _totalContacts = uniqueReceivers.length;
@@ -282,69 +267,61 @@ class AuthProvider with ChangeNotifier {
         final allTransfers = await ApiService.getAllTransfers();
         _recentTransfers = allTransfers.take(3).toList();
       } catch (e) {
-        print('❌ getAllTransfers Error: $e');
         _recentTransfers = [];
       }
-
       notifyListeners();
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('❌ [LOAD ACCOUNT STATS] Error: $e');
-      _totalTransfers = 0;
-      _totalContacts = 0;
-      _recentTransfers = [];
-      notifyListeners();
     }
   }
 
-  // ⭐ Refresh - Bakiye API'den çekilmeli
+  // ⭐ Refresh - Tüm verileri tazele
   Future<void> refreshAccountData() async {
     try {
       print('🔄 RefreshAccountData Started');
-
-      // İstatistikleri yükle
       await _loadAccountStats();
-
-      // Profil bilgilerini yükle (sadece isim/username)
       await refreshUserInfo();
-
       print('✅ RefreshAccountData Completed');
     } catch (e) {
       print('❌ Refresh error: $e');
     }
   }
 
-  // ⭐ Sadece isim ve username güncelle
+  // ⭐ Sadece isim ve username güncelle (Cache dahil)
   Future<void> refreshUserInfo() async {
     try {
-      final senderInfo = await ApiService.getSenderInfo();
+      final senderInfoMap = await ApiService.getSenderInfo();
+      if (senderInfoMap != null) {
+        // Makbuz ekranı için cache'e yaz
+        setSenderInfo(senderInfoMap);
 
-      if (senderInfo != null && _currentCustomer != null) {
-        // Sadece isim bilgilerini güncelle, bakiyeye DOKUNMA
-        _currentCustomer = Customer(
-          cusId: _currentCustomer!.cusId,
-          regName: _currentCustomer!.regName,
-          cusName: senderInfo['cus_NAME'] ?? _currentCustomer!.cusName,
-          cusFatherName:
-              senderInfo['cusFatherName'] ?? _currentCustomer!.cusFatherName,
-          cusLastName:
-              senderInfo['CusLastName'] ?? _currentCustomer!.cusLastName,
-          // BAKİYEYİ KORU
-          cusBalanceSyr: _currentCustomer!.cusBalanceSyr,
-          cusBalanceDollar: _currentCustomer!.cusBalanceDollar,
-          clientId: _currentCustomer!.clientId,
-        );
-
-        await _saveCustomerToStorage();
-        notifyListeners();
-
-        print('👤 Kullanıcı bilgileri güncellendi (bakiye korundu)');
+        if (_currentCustomer != null) {
+          _currentCustomer = Customer(
+            cusId: _currentCustomer!.cusId,
+            regName: senderInfoMap['cityName'] ?? _currentCustomer!.regName,
+            cusName: senderInfoMap['cuS_NAME'] ??
+                senderInfoMap['cusName'] ??
+                _currentCustomer!.cusName,
+            cusFatherName: senderInfoMap['cusFatherName'] ??
+                _currentCustomer!.cusFatherName,
+            cusLastName: senderInfoMap['cusLastName'] ??
+                senderInfoMap['CusLastName'] ??
+                _currentCustomer!.cusLastName,
+            cusBalanceSyr: _currentCustomer!.cusBalanceSyr,
+            cusBalanceDollar: _currentCustomer!.cusBalanceDollar,
+            clientId: _currentCustomer!.clientId,
+          );
+          await _saveCustomerToStorage();
+          notifyListeners();
+          print('👤 Kullanıcı bilgileri ve SenderInfo güncellendi');
+        }
       }
     } catch (e) {
       print('❌ User info refresh error: $e');
     }
   }
 
-  // ⭐ DEPRECATED - MainScreen'den çağrılmamalı
+  // ⭐ DEPRECATED
   @Deprecated('Use MainScreen._loadBalance instead')
   void updateBalance({
     required String currency,
@@ -352,7 +329,6 @@ class AuthProvider with ChangeNotifier {
     TransferModel? transfer,
   }) {
     if (_currentCustomer == null) return;
-
     final customer = _currentCustomer!;
     _currentCustomer = Customer(
       cusId: customer.cusId,
@@ -367,34 +343,26 @@ class AuthProvider with ChangeNotifier {
           : customer.cusBalanceDollar,
       clientId: customer.clientId,
     );
-
     _saveCustomerToStorage();
     notifyListeners();
-
-    print('⚠️ DEPRECATED updateBalance kullanıldı: -$amount $currency');
   }
 
   Future<void> logout() async {
     try {
       await ApiService.logout();
-    } catch (e) {
-      print('Logout API error: $e');
-    }
-
+    } catch (e) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
 
     _currentCustomer = null;
+    _senderInfo = null;
     _isAuthenticated = false;
     _isSessionVerified = false;
     _totalTransfers = 0;
     _totalContacts = 0;
     _recentTransfers = [];
     _errorMessage = '';
-
     notifyListeners();
-
-    print('✅ Logout: Tüm state temizlendi');
   }
 
   Future<void> checkSession() async {
@@ -428,36 +396,27 @@ class AuthProvider with ChangeNotifier {
     _clearError();
   }
 
-  Future<bool> changePassword({
-    required String oldPassword,
-    required String newPassword,
-  }) async {
+  Future<bool> changePassword(
+      {required String oldPassword, required String newPassword}) async {
     _setLoading(true);
     _clearError();
-
     try {
-      if (_currentCustomer == null) {
+      if (_currentCustomer == null)
         throw Exception('لم يتم العثور على بيانات المستخدم');
-      }
-
       final response = await ApiService.changePassword(
         customerId: _currentCustomer!.cusId,
         oldPassword: oldPassword,
         newPassword: newPassword,
       );
-
       if (response['success'] == true) {
         _clearUserData();
         return true;
       } else {
-        final errorMessage = response['message'] ?? 'فشل تغيير كلمة المرور';
-        _setError(errorMessage);
+        _setError(response['message'] ?? 'فشل تغيير كلمة المرور');
         return false;
       }
     } catch (e) {
-      String message = e.toString();
-      if (message.startsWith("Exception: ")) message = message.substring(11);
-      _setError(message);
+      _setError(e.toString());
       return false;
     } finally {
       _setLoading(false);
@@ -466,6 +425,7 @@ class AuthProvider with ChangeNotifier {
 
   void _clearUserData() {
     _currentCustomer = null;
+    _senderInfo = null;
     _isAuthenticated = false;
     _isSessionVerified = false;
     _totalTransfers = 0;

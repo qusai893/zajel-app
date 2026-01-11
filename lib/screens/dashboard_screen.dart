@@ -598,7 +598,7 @@ class DashboardScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '${transfer.amount.toStringAsFixed(0)} ${transfer.currency}',
+                            '${transfer.totalAmount.toStringAsFixed(0)} ${transfer.currency}',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,

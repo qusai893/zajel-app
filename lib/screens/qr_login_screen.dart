@@ -19,21 +19,16 @@ class _QrLoginScreenState extends State<QrLoginScreen>
     with WidgetsBindingObserver {
   final DeviceAuthService _authService = DeviceAuthService();
 
-  // İşlem durumu ve son okunan kod
   bool isProcessing = false;
   String? lastScannedCode;
 
-  // Kamera kontrolcüsü
-  final MobileScannerController controller = MobileScannerController(
-      // Otomatik başlatma ayarları vs. buraya eklenebilir
-      );
+  final MobileScannerController controller = MobileScannerController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Hemen başlatmak yerine 500ms bekle (Kamera açılış performansı için)
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         controller.start();
@@ -48,7 +43,6 @@ class _QrLoginScreenState extends State<QrLoginScreen>
     super.dispose();
   }
 
-  // App Lifecycle yönetimi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!controller.value.isInitialized) return;
@@ -70,7 +64,6 @@ class _QrLoginScreenState extends State<QrLoginScreen>
   Future<void> _scanFromGallery() async {
     final ImagePicker picker = ImagePicker();
 
-    // Galeriyi aç
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image == null) return;
@@ -86,8 +79,7 @@ class _QrLoginScreenState extends State<QrLoginScreen>
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text("لم يتم العثور على رمز QR في الصورة"), // QR bulunamadı
+            content: Text("لم يتم العثور على رمز QR في الصورة"),
             backgroundColor: Colors.red,
           ),
         );
@@ -97,7 +89,6 @@ class _QrLoginScreenState extends State<QrLoginScreen>
     }
   }
 
-  // Kamera QR'ı görünce burası çalışır (Galeriden seçilince de burası çalışacak)
   void _onQrDetected(BarcodeCapture capture) {
     if (isProcessing) return;
 
@@ -107,7 +98,6 @@ class _QrLoginScreenState extends State<QrLoginScreen>
     final String? code = barcodes.first.rawValue;
 
     if (code != null) {
-      // Kodu hafızaya alıyoruz ki "Tekrar Dene" dediğimizde kullanabilelim
       lastScannedCode = code;
       _performLogin(code);
     }
@@ -122,7 +112,6 @@ class _QrLoginScreenState extends State<QrLoginScreen>
       if (!mounted) return;
 
       if (result != null && result.success) {
-        // --- BAŞARILI GİRİŞ ---
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
         if (result.token != null) authProvider.setToken(result.token!);
