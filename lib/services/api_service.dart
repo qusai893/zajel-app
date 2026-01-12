@@ -190,15 +190,20 @@ class ApiService {
             Uri.parse('$baseUrl/Auth/approve-device-login'),
             headers: headers,
             body: json.encode({
-              'customerId': customerId,
-              'newAndroidId': newAndroidId,
-              'isApproved': isApproved
+              // Backend'deki DeviceApprovalRequest modelindeki isimlerle birebir aynı olmalı
+              'NewAndroidId': newAndroidId,
+              'IsApproved': isApproved
             }),
           )
           .timeout(const Duration(seconds: 15));
 
+      // Debug için log ekleyelim
+      debugPrint("Approve Response Status: ${response.statusCode}");
+      debugPrint("Approve Response Body: ${response.body}");
+
       return response.statusCode == 200;
     } catch (e) {
+      debugPrint("Approve Device Error: $e");
       return false;
     }
   }

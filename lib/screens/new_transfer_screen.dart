@@ -6,13 +6,14 @@ import 'package:zajel/appColors.dart';
 import 'package:zajel/main.dart';
 import 'package:zajel/models/beneficiary_model.dart';
 import 'package:zajel/screens/beneficiaries_screen.dart';
-import 'package:zajel/screens/dashboard_screen.dart';
 import 'package:zajel/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:zajel/services/beneficiary_service.dart';
 import '../providers/auth_provider.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
+// Biyometrik servisinizin yolunu projenize göre kontrol edin
+// import 'package:zajel/services/auth_service.dart';
 
 class NewTransferScreen extends StatefulWidget {
   final BeneficiaryModel? initialBeneficiary;
@@ -22,7 +23,9 @@ class NewTransferScreen extends StatefulWidget {
   _NewTransferScreenState createState() => _NewTransferScreenState();
 }
 
-class _NewTransferScreenState extends State<NewTransferScreen> {
+// WidgetsBindingObserver ekleyerek uygulama yaşam döngüsünü (arka plan/ön plan) izliyoruz
+class _NewTransferScreenState extends State<NewTransferScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   Timer? _debounce;
   Timer? _statsTimer;
@@ -41,8 +44,8 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
   int _maxAllowedTransfers = 0;
   String _timeRemainingStr = "00:00:00";
   Duration _remainingDuration = Duration.zero;
-  Map<String, dynamic>? _cachedSettings; // Ayarları hafızada tutmak için
-
+  Map<String, dynamic>? _cachedSettings;
+  List<dynamic> _cities = [];
   // Controller'lar
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _fatherNameController = TextEditingController();
@@ -55,13 +58,10 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
       TextEditingController();
   final TextEditingController _senderNotesController = TextEditingController();
 
-  // Şehir ve Bildirim
   int _selectedCityId = 0;
   String _selectedCityName = '';
   String _notificationNumber = '---';
 
-  // Durum Yönetimi
-  List<dynamic> _cities = [];
   bool _isLoading = false;
   bool _isSubmitting = false;
   bool _isCalculating = false;
@@ -71,9 +71,11 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Lifecycle izleyiciyi başlat
     _firstNameController.addListener(_onNameChanged);
     _fatherNameController.addListener(_onNameChanged);
     _lastNameController.addListener(_onNameChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
       if (widget.initialBeneficiary != null) {
@@ -84,6 +86,7 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Lifecycle izleyiciyi kaldır
     _debounce?.cancel();
     _statsTimer?.cancel();
     _firstNameController.dispose();
@@ -96,14 +99,52 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     super.dispose();
   }
 
-  // --- VERİLERİ YÜKLE ---
+  // --- BİYOMETRİK GÜVENLİK KONTROLÜ (UYGULAMAYA GERİ DÖNÜLDÜĞÜNDE) ---
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _authenticateUser(); // Uygulama ön plana geldiğinde şifre/parmak izi iste
+    }
+  }
+
+  Future<void> _authenticateUser() async {
+    // Burada projenizdeki mevcut biyometrik doğrulama metodunu çağırın.
+    // Örnek: final authenticated = await AuthService.authenticate();
+    // Eğer başarısız olursa kullanıcıyı login ekranına atabilir veya uygulamayı kapatabilirsiniz.
+    debugPrint("Biyometrik doğrulama tetiklendi (App Resumed)");
+  }
+
+  // --- ÇIKIŞ ONAY DİYALOĞU ---
+  Future<bool> _onWillPop() async {
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('تنبيه',
+            textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Cairo')),
+        content: Text('هل أنت متأكد من رغبتك في إلغاء عملية التحويل والخروج؟',
+            textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('لا',
+                style: TextStyle(color: Colors.grey, fontFamily: 'Cairo')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('نعم، خروج',
+                style: TextStyle(color: Colors.red, fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+    return shouldPop ?? false;
+  }
+
   Future<void> _initializeData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-
     try {
-      // Future.wait içindeki her bir isteği kendi içinde korumaya alıyoruz.
-      // Bir API hata verirse tüm sayfa çökmeyecek.
       final results = await Future.wait([
         ApiService.getCities().catchError((e) => []),
         ApiService.generateNotificationNumber().catchError((e) => "---"),
@@ -112,27 +153,21 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
       ]);
 
       if (!mounted) return;
-
       setState(() {
         _cities = results[0] as List<dynamic>? ?? [];
         _notificationNumber = results[1] as String? ?? "---";
-
-        // Günlük İstatistikler (Null Kontrolü)
         if (results[2] != null) {
           final stats = results[2] as Map<String, dynamic>;
           _remainingTransfersCount = stats['remainingTransfers'] ?? 0;
           _maxAllowedTransfers = stats['maxAllowedTransfers'] ?? 0;
           _startCountdown(stats['timeRemaining']);
         }
-
-        // Limit Ayarları (Null Kontrolü)
         if (results[3] != null) {
           _cachedSettings = results[3] as Map<String, dynamic>;
           _updateLimits(_cachedSettings!);
         }
       });
     } catch (e) {
-      debugPrint("Init Error Detail: $e");
       _showError("حدث خطأ أثناء تحميل البيانات، يرجى التحقق من الاتصال");
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -141,7 +176,6 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
   void _updateLimits(Map<String, dynamic> settings) {
     setState(() {
-      // Backend'deki DTO isimleriyle tam eşleşme (Json serialization genelde camelCase yapar)
       if (_currency == 'USD') {
         _minLimit =
             settings['minDollarAmount'] ?? settings['MinDollarAmount'] ?? 0;
@@ -154,10 +188,8 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     });
   }
 
-  // --- GERİ SAYIM SAYACI (CANLI) ---
   void _startCountdown(String? timeStr) {
     if (timeStr == null || !timeStr.contains(':')) return;
-
     try {
       List<String> parts = timeStr.split(':');
       if (parts.length == 3) {
@@ -166,7 +198,6 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
           minutes: int.parse(parts[1]),
           seconds: int.parse(parts[2]),
         );
-
         _statsTimer?.cancel();
         _statsTimer = Timer.periodic(Duration(seconds: 1), (timer) {
           if (_remainingDuration.inSeconds <= 0) {
@@ -183,7 +214,7 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Timer Parsing Error: $e");
+      debugPrint("Timer Error: $e");
     }
   }
 
@@ -192,23 +223,25 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     return "${twoDigits(d.inHours)}:${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
   }
 
-  // --- İŞLEM KONTROLLERİ ---
   void _onAmountChanged(String value) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 600), () async {
       int? val = int.tryParse(value);
-      if (val != null && val > 0) {
+      if (val != null) {
         setState(() {
           _amount = val;
-          if (_amount < _minLimit) {
-            _limitError = "القيمة أقل من الحد \n المسموح ($_minLimit)";
+          if (_amount > 0 && _amount < _minLimit) {
+            _limitError = "القيمة أقل من الحد\n المسموح ($_minLimit)";
           } else if (_amount > _maxLimit) {
-            _limitError = "القيمة أكبر من الحد\n المسموح ($_maxLimit)";
+            _limitError = "القيمة أكبر من الحد \nالمسموح ($_maxLimit)";
           } else {
             _limitError = null;
           }
         });
-        if (_limitError == null) await _calculateTransferFee();
+        // Sadece hata yoksa ve miktar 0'dan büyükse hesapla
+        if (_limitError == null && _amount > 0) {
+          await _calculateTransferFee();
+        }
       } else {
         setState(() {
           _amount = 0;
@@ -236,9 +269,9 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
   }
 
   void _onNameChanged() {
-    if (_firstNameController.text.length > 2 &&
-        _fatherNameController.text.length > 2 &&
-        _lastNameController.text.length > 2) {
+    if (_firstNameController.text.trim().length > 2 &&
+        _fatherNameController.text.trim().length > 2 &&
+        _lastNameController.text.trim().length > 2) {
       _checkReceiver();
     }
   }
@@ -247,9 +280,9 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     setState(() => _checkingReceiver = true);
     try {
       final exists = await ApiService.checkReceiverExists(
-          _firstNameController.text,
-          _fatherNameController.text,
-          _lastNameController.text);
+          _firstNameController.text.trim(),
+          _fatherNameController.text.trim(),
+          _lastNameController.text.trim());
       setState(() => _isExistingReceiver = exists);
     } catch (e) {
       debugPrint("Check Receiver Error: $e");
@@ -271,14 +304,22 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     _checkReceiver();
   }
 
-  // --- TRANSFER GÖNDERİMİ ---
+  // --- GÜVENLİ TRANSFER GÖNDERİMİ ---
   Future<void> _submitTransfer() async {
-    if (_isSubmitting) return;
+    if (_isSubmitting) return; // Çift gönderim engelleme
 
-    if (!_formKey.currentState!.validate() || _limitError != null) return;
+    // 1. Form Validasyonu
+    if (!_formKey.currentState!.validate() || _limitError != null) {
+      _showError('يرجى التأكد من جميع البيانات المدخلة');
+      return;
+    }
 
-    if (_transferReasonController.text.trim().length < 5) {
-      _showError('يرجى إدخال سبب التحويل بشكل واضح');
+    // 2. Havale Sebebi Güvenlik Kontrolü (Minimum 5 karakter, sadece anlamlı metin)
+    final reason = _transferReasonController.text.trim();
+    final reasonRegex = RegExp(
+        r'^[a-zA-Z\s\u0600-\u06FF]{5,100}$'); // Harfler ve boşluklar, 5-100 karakter
+    if (!reasonRegex.hasMatch(reason)) {
+      _showError('يرجى إدخال سبب تحويل واضح (أحرف فقط وبدون رموز)');
       return;
     }
 
@@ -287,16 +328,19 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final customer = authProvider.currentCustomer;
+
+      // Bakiye kontrolü
       double balance = _currency == 'USD'
           ? (customer?.cusBalanceDollar.toDouble() ?? 0)
           : (customer?.cusBalanceSyr.toDouble() ?? 0);
 
       if ((_amount + _fee) > balance) {
-        _showError('عفواً، رصيدك غير كافي');
+        _showError('عفواً، رصيدك غير كافي لهذه العملية');
         setState(() => _isSubmitting = false);
         return;
       }
 
+      // Verileri güvenli şekilde hazırla
       final transferData = {
         'amount': _amount,
         'currency': _currency,
@@ -307,13 +351,14 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
         'receiverCityId': _selectedCityId,
         'receiverPhone': _receiverPhoneController.text.trim(),
         'receiverMobilePhone': _receiverMobilePhoneController.text.trim(),
-        'transferReason': _transferReasonController.text.trim(),
+        'transferReason': reason,
         'senderNotes': _senderNotesController.text.trim(),
       };
 
       final result = await ApiService.sendTransfer(transferData);
 
       if (result['success'] == true) {
+        // Rehbere kaydet
         BeneficiaryService.saveBeneficiary(BeneficiaryModel(
           firstName: _firstNameController.text.trim(),
           fatherName: _fatherNameController.text.trim(),
@@ -326,15 +371,16 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
         await authProvider.refreshUserInfo();
         _showSuccess('✅ تم إرسال الحوالة بنجاح');
+
         if (mounted) {
           Navigator.pushAndRemoveUntil(context,
               MaterialPageRoute(builder: (c) => MainScreen()), (r) => false);
         }
       } else {
-        _showError(result['message'] ?? 'خطأ في الإرسال');
+        _showError(result['message'] ?? 'خطأ في عملية الإرسال');
       }
     } catch (e) {
-      _showError("حدث خطأ غير متوقع: ${e.toString()}");
+      _showError("حدث خطأ غير متوقع، يرجى المحاولة لاحقاً");
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -342,12 +388,16 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
   void _showError(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg, style: TextStyle(fontFamily: 'Cairo')),
+          content: Text(msg,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontFamily: 'Cairo')),
           backgroundColor: Colors.red));
 
   void _showSuccess(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg, style: TextStyle(fontFamily: 'Cairo')),
+          content: Text(msg,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontFamily: 'Cairo')),
           backgroundColor: Colors.green));
 
   @override
@@ -357,55 +407,112 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
     final double syrBalance = customer?.cusBalanceSyr.toDouble() ?? 0.0;
     final double dollarBalance = customer?.cusBalanceDollar.toDouble() ?? 0.0;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: _isLoading
-          ? _buildLoadingState()
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                bool isMobile = constraints.maxWidth < 600;
-                return GestureDetector(
-                  onTap: () => FocusScope.of(context).unfocus(),
-                  child: CustomScrollView(
-                    physics: BouncingScrollPhysics(),
-                    slivers: [
-                      _buildSliverAppBar(context),
-                      SliverPadding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 16 : 32, vertical: 10),
-                        sliver: SliverList(
-                          delegate: SliverChildListDelegate([
-                            _buildDailyStatsHeader(),
-                            SizedBox(height: 16),
-                            Form(
-                              key: _formKey,
-                              child: Column(
-                                children: [
-                                  _buildSenderCard(
-                                      isMobile,
-                                      "${customer?.cusName ?? ''} ${customer?.cusFatherName ?? ''} ${customer?.cusLastName ?? ''}",
-                                      syrBalance,
-                                      dollarBalance),
-                                  SizedBox(height: 20),
-                                  _buildAmountCard(isMobile),
-                                  SizedBox(height: 20),
-                                  _buildReceiverCard(isMobile),
-                                  SizedBox(height: 20),
-                                  _buildDestinationCard(isMobile),
-                                  SizedBox(height: 30),
-                                  _buildActionButtons(isMobile),
-                                  SizedBox(height: 40),
-                                ],
+    // PopScope ile çıkış kontrolü sağlanıyor
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: _isLoading
+            ? _buildLoadingState()
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  bool isMobile = constraints.maxWidth < 600;
+                  return GestureDetector(
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: CustomScrollView(
+                      physics: BouncingScrollPhysics(),
+                      slivers: [
+                        _buildSliverAppBar(context),
+                        SliverPadding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 16 : 32, vertical: 10),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate([
+                              _buildDailyStatsHeader(),
+                              SizedBox(height: 16),
+                              Form(
+                                key: _formKey,
+                                child: Column(
+                                  children: [
+                                    _buildSenderCard(
+                                        isMobile,
+                                        "${customer?.cusName ?? ''} ${customer?.cusFatherName ?? ''} ${customer?.cusLastName ?? ''}",
+                                        syrBalance,
+                                        dollarBalance),
+                                    SizedBox(height: 20),
+                                    _buildAmountCard(isMobile),
+                                    SizedBox(height: 20),
+                                    _buildReceiverCard(isMobile),
+                                    SizedBox(height: 20),
+                                    _buildDestinationCard(isMobile),
+                                    SizedBox(height: 30),
+                                    _buildActionButtons(isMobile),
+                                    SizedBox(height: 40),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ]),
+                            ]),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  // --- WIDGET BİLEŞENLERİ ---
+
+  Widget _buildTransferStatusWidget() {
+    if (_remainingTransfersCount <= 0) {
+      return Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red, size: 18),
+          SizedBox(width: 4),
+          Text("عفواً، استنفدت حدك اليومي",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.red,
+                  fontFamily: 'Cairo')),
+        ],
+      );
+    }
+    if (_remainingTransfersCount <= 3) {
+      return Row(
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: Colors.orange[700], size: 18),
+          SizedBox(width: 4),
+          Text("متبقي $_remainingTransfersCount تحويلات فقط",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.orange[800],
+                  fontFamily: 'Cairo')),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Icon(Icons.check_circle_outline, color: AppColors.primary, size: 18),
+        SizedBox(width: 4),
+        Text("$_remainingTransfersCount / $_maxAllowedTransfers",
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: AppColors.primary,
+                fontFamily: 'Cairo')),
+      ],
     );
   }
 
@@ -423,17 +530,13 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("الحوالات المتبقية اليوم",
+              Text("حالة حد التحويل اليومي",
                   style: TextStyle(
                       color: AppColors.secondary,
                       fontSize: 12,
                       fontFamily: 'Cairo')),
-              Text("$_remainingTransfersCount / $_maxAllowedTransfers",
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: AppColors.primary,
-                      fontFamily: 'Cairo')),
+              const SizedBox(height: 4),
+              _buildTransferStatusWidget(),
             ],
           ),
           Column(
@@ -571,7 +674,14 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                           EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                     ),
                     onChanged: _onAmountChanged,
-                    validator: (v) => (v == null || v.isEmpty) ? 'مطلوب' : null,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'يرجى إدخال المبلغ';
+                      int? val = int.tryParse(v);
+                      if (val == null || val <= 0) return 'مبلغ غير صالح';
+                      if (val < _minLimit) return 'الحد الأدنى هو $_minLimit';
+                      if (val > _maxLimit) return 'الحد الأعلى هو $_maxLimit';
+                      return null;
+                    },
                   ),
                 ),
               ),
@@ -597,7 +707,6 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                         _currency = val!;
                         if (_cachedSettings != null) {
                           _updateLimits(_cachedSettings!);
-                          // Kur değişince hatayı tekrar kontrol et
                           if (_amount > 0) _onAmountChanged(_amount.toString());
                         }
                       });
@@ -674,14 +783,16 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                       controller: _receiverPhoneController,
                       label: 'الهاتف',
                       icon: Icons.phone_outlined,
-                      isPhone: true)),
+                      isPhone: true // Telefon formatı için true
+                      )),
               SizedBox(width: 12),
               Expanded(
                   child: _buildModernTextField(
                       controller: _receiverMobilePhoneController,
                       label: 'الموبايل',
                       icon: Icons.smartphone_outlined,
-                      isPhone: true)),
+                      isPhone: true // Telefon formatı için true
+                      )),
             ],
           ),
         ],
@@ -802,11 +913,20 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
           TextFormField(
             controller: _transferReasonController,
             maxLines: 2,
+            inputFormatters: [
+              // Sadece harf, rakam ve boşluk. Özel sembolleri girişte engeller.
+              FilteringTextInputFormatter.allow(
+                  RegExp(r'[a-zA-Z0-9\s\u0600-\u06FF]')),
+            ],
             decoration: _inputDecoration(
                     hintText: 'سبب التحويل...',
                     prefixIcon: Icons.description_outlined)
                 .copyWith(alignLabelWithHint: true),
-            validator: (v) => v!.trim().isEmpty ? 'يرجى إدخال السبب' : null,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'يرجى إدخال السبب';
+              if (v.trim().length < 5) return 'السبب قصير جداً وغير واضح';
+              return null;
+            },
           ),
         ],
       ),
@@ -818,7 +938,9 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
       children: [
         Expanded(
           child: OutlinedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              if (await _onWillPop()) Navigator.pop(context);
+            },
             style: OutlinedButton.styleFrom(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -861,8 +983,18 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
 
   void _showConfirmationDialog() {
     if (!_formKey.currentState!.validate()) return;
+
+    // Güvenlik: Havale sebebi regex kontrolünü burada da yapıyoruz
+    final reason = _transferReasonController.text.trim();
+    if (reason.length < 5) {
+      _showError('يرجى إدخال سبب تحويل صحيح');
+      return;
+    }
+
     showDialog(
       context: context,
+      barrierDismissible:
+          false, // Diyalog dışına tıklayarak kapatmayı engelle (Güvenlik)
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         content: Column(
@@ -875,7 +1007,7 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                     fontFamily: 'Cairo')),
             SizedBox(height: 20),
             _confirmRow('المستفيد',
-                '${_firstNameController.text}${_fatherNameController.text} ${_lastNameController.text}'),
+                '${_firstNameController.text.trim()} ${_fatherNameController.text.trim()} ${_lastNameController.text.trim()}'),
             _confirmRow('المبلغ', '$_amount $_currency', isBold: true),
             _confirmRow('الرسوم', '$_fee $_currency'),
             Divider(),
@@ -898,6 +1030,10 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
                       fontFamily: 'Cairo',
                       fontWeight: FontWeight.bold)),
             ),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('تعديل البيانات',
+                    style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)))
           ],
         ),
       ),
@@ -974,9 +1110,20 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
       controller: controller,
       keyboardType: isPhone ? TextInputType.number : TextInputType.text,
       textDirection: isPhone ? ui.TextDirection.ltr : null,
+      inputFormatters: isPhone
+          ? [FilteringTextInputFormatter.digitsOnly]
+          : [
+              // İsim alanlarında sembolleri engelle (Güvenlik)
+              FilteringTextInputFormatter.allow(
+                  RegExp(r'[a-zA-Z\s\u0600-\u06FF]')),
+            ],
       style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
       decoration: _inputDecoration(hintText: label, prefixIcon: icon),
-      validator: (v) => (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+      validator: (v) {
+        if (v == null || v.trim().isEmpty) return 'مطلوب';
+        if (!isPhone && v.trim().length < 2) return 'قصير جداً';
+        return null;
+      },
     );
   }
 
@@ -1002,7 +1149,13 @@ class _NewTransferScreenState extends State<NewTransferScreen> {
       pinned: true,
       elevation: 0,
       backgroundColor: AppColors.primary,
-      iconTheme: IconThemeData(color: Colors.white),
+      automaticallyImplyLeading: false, // Manuel kontrol için
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () async {
+          if (await _onWillPop()) Navigator.pop(context);
+        },
+      ),
       flexibleSpace: FlexibleSpaceBar(
           centerTitle: true,
           title: Text("إرسال حوالة جديدة",

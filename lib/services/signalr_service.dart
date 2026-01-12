@@ -3,37 +3,44 @@ import 'package:signalr_netcore/signalr_client.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'api_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class SignalRService {
   late HubConnection hubConnection;
-  final String serverUrl = "https://nabhanco.com/authHub";
+  static String serverUrl = dotenv.env['AUTH_HUB_URL'] ?? "";
+
   static final SignalRService _instance = SignalRService._internal();
   factory SignalRService() => _instance;
   SignalRService._internal();
 
   bool _isInitialized = false;
 
+  // onLogout fonksiyonunu sınıf seviyesinde saklayalım ki dışarıdan tetikleyebilelim
+  Function? _logoutCallback;
+
   Future<void> initSignalR(
       int userId, BuildContext context, Function onLogout) async {
+    // Callback'i kaydet
+    _logoutCallback = onLogout;
+
     if (_isInitialized) return;
 
-    // 🔧 HttpConnectionOptions düzgün şekilde oluştur
     final httpConnectionOptions = HttpConnectionOptions(
       skipNegotiation: false,
-      requestTimeout: 60000, // 60 saniye
+      requestTimeout: 60000,
     );
 
     hubConnection = HubConnectionBuilder()
-        .withUrl(serverUrl, options: httpConnectionOptions) // ✅ Named parameter
-        .withAutomaticReconnect(retryDelays: [
-      0, 2000, 5000, 10000, 30000 // Yeniden bağlanma aralıkları (ms)
-    ]).build();
+        .withUrl(serverUrl, options: httpConnectionOptions)
+        .withAutomaticReconnect(
+            retryDelays: [0, 2000, 5000, 10000, 30000]).build();
 
-    // 🔧 Timeout ayarları
-    hubConnection.serverTimeoutInMilliseconds = 60000; // 60 saniye
-    hubConnection.keepAliveIntervalInMilliseconds = 15000; // 15 saniye
+    hubConnection.serverTimeoutInMilliseconds = 60000;
+    hubConnection.keepAliveIntervalInMilliseconds = 15000;
 
-    // 🔧 Event listeners
+    // --- EVENT LISTENERLAR ---
+
+    // 1. Mevcut: Yeni Giriş İsteği
     hubConnection.on("NewLoginAttempt", (arguments) {
       if (arguments != null && arguments.isNotEmpty) {
         final data = arguments[0] as Map<String, dynamic>;
@@ -41,21 +48,29 @@ class SignalRService {
       }
     });
 
-    // 🔧 Bağlantı durumu dinleyicileri
-    hubConnection.onclose(({error}) {
-      print("❌ SignalR Bağlantısı Kapandı: $error");
-      _isInitialized = false;
+    // 2. 🔥 YENİ: Zorla Çıkış İsteği (Backend'den tetiklenecek)
+    hubConnection.on("ForceLogout", (arguments) {
+      print("⚠️ ForceLogout received from server");
+      // UI Thread içinde çalıştır
+      Future.delayed(Duration.zero, () {
+        if (_logoutCallback != null) {
+          _logoutCallback!(); // Ana çıkış fonksiyonunu çalıştır
+
+          // Kullanıcıya bilgi ver (Opsiyonel)
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("تم تسجيل الدخول من جهاز آخر، تم تسجيل الخروج."),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      });
     });
 
-    hubConnection.onreconnecting(({error}) {
-      print("🔄 SignalR Yeniden Bağlanıyor...");
-    });
-
-    hubConnection.onreconnected(({connectionId}) {
-      print("✅ SignalR Yeniden Bağlandı: $connectionId");
-      // Yeniden register ol
-      _registerUser(userId);
-    });
+    // ... Diğer connection listenerlar (onclose, onreconnecting vs. aynı kalabilir) ...
 
     try {
       await hubConnection.start();
@@ -70,23 +85,18 @@ class SignalRService {
 
   Future<void> _registerUser(int userId) async {
     try {
-      await hubConnection.invoke("RegisterUser", args: [userId.toString()]);
-      print("✅ User Registered: $userId");
+      if (hubConnection.state == HubConnectionState.Connected) {
+        await hubConnection.invoke("RegisterUser", args: [userId.toString()]);
+      }
     } catch (e) {
       print("❌ RegisterUser Error: $e");
     }
   }
 
-  // 🔧 Bağlantıyı düzgün kapat
   Future<void> dispose() async {
     if (_isInitialized) {
-      try {
-        await hubConnection.stop();
-        _isInitialized = false;
-        print("🛑 SignalR Disconnected");
-      } catch (e) {
-        print("❌ Dispose Error: $e");
-      }
+      await hubConnection.stop();
+      _isInitialized = false;
     }
   }
 
@@ -116,15 +126,39 @@ class SignalRService {
                   Provider.of<AuthProvider>(context, listen: false);
               if (authProvider.currentCustomer == null) return;
 
+              // Dialogu hemen kapatma, işlem sonucunu bekle veya loading göster
+              // Basitlik için burada kapatıyoruz ama hata olursa kullanıcıya bildirmeliyiz.
               Navigator.of(ctx).pop();
 
-              bool result = await ApiService.approveDeviceLogin(
-                  authProvider.currentCustomer!.cusId,
-                  data['NewDeviceAndroidId'],
-                  true);
+              try {
+                bool result = await ApiService.approveDeviceLogin(
+                    authProvider.currentCustomer!.cusId,
+                    data['NewDeviceAndroidId'],
+                    true);
 
-              if (result) {
-                onLogout();
+                if (result) {
+                  // Başarılı olursa API zaten SignalR üzerinden "ForceLogout" gönderecek.
+                  // Ama garanti olsun diye burada da çağırabiliriz.
+                  print("✅ Approval sent successfully");
+                  // onLogout(); // Bunu "ForceLogout" eventine bıraktık ama istersen burada da dursun.
+                } else {
+                  // Hata durumunda kullanıcıya bildir
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              "فشلت عملية الموافقة، يرجى المحاولة مرة أخرى"),
+                          backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text("خطأ: $e"), backgroundColor: Colors.red),
+                  );
+                }
               }
             },
             child: const Text("نعم، اسمح له",

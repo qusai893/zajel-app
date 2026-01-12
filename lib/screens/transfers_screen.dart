@@ -39,8 +39,8 @@ class _TransfersScreenState extends State<TransfersScreen> {
     _loadTransfers();
   }
 
-  void redirect(Widget newRoute) {
-    Navigator.pushReplacement(
+  void redirect(BuildContext context, Widget newRoute) {
+    Navigator.push(
         (context), MaterialPageRoute(builder: (context) => newRoute));
   }
 
@@ -204,7 +204,7 @@ class _TransfersScreenState extends State<TransfersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => redirect(NewTransferScreen()),
+        onPressed: () => redirect(context, NewTransferScreen()),
         backgroundColor: AppColors.primary,
         icon: Icon(Icons.add, color: Colors.white),
         label: Text('حوالة جديدة',
